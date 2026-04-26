@@ -1,0 +1,4 @@
+# Never commit private keys to version control
+*.key
+# rootCA.pem: test CA private to this setup – use plc-rootCA.pem for PLC-signed certs
+rootCA.pem

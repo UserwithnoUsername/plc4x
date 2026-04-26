@@ -82,6 +82,25 @@
           </instructions>
         </configuration>
       </plugin>
+      <!-- bctls-jdk18on is loaded reflectively at runtime for PSK mode only; suppress false positive -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <configuration>
+          <ignoredUnusedDeclaredDependencies>
+            <ignoredUnusedDeclaredDependency>org.bouncycastle:bctls-jdk18on</ignoredUnusedDeclaredDependency>
+          </ignoredUnusedDeclaredDependencies>
+        </configuration>
+      </plugin>
+      <!-- exec:java support for ManualAdsSecureTest -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <configuration>
+          <mainClass>org.apache.plc4x.protocol.ads.ManualAdsSecureTest</mainClass>
+          <classpathScope>test</classpathScope>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
 
@@ -110,6 +129,22 @@
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-transport</artifactId>
+    </dependency>
+    <!-- TLS support for ADS Secure (SslHandler, SslContext, SslContextBuilder) -->
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-handler</artifactId>
+    </dependency>
+    <!--
+      Bouncy Castle TLS JSSE provider – required ONLY for PSK mode.
+      Loaded reflectively at runtime so callers without PSK needs have no hard dep.
+      bctls-jdk18on is NOT managed in the root POM, so the version is pinned here.
+    -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bctls-jdk18on</artifactId>
+      <version>1.84</version>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>

@@ -165,8 +165,8 @@ public class AdsProtocolLogic extends Plc4xProtocolBase<AmsTCPPacket> implements
                 RequestTransactionManager.RequestTransaction readDeviceInfoTx = tm.startRequest();
                 readDeviceInfoTx.submit(() -> context.sendRequest(new AmsTCPPacket(readDeviceInfoRequest))
                     .expectResponse(AmsTCPPacket.class, Duration.ofMillis(configuration.getTimeoutRequest()))
-                    .onTimeout(e -> context.getChannel().pipeline().fireExceptionCaught(e))
-                    .onError((p, e) -> context.getChannel().pipeline().fireExceptionCaught(e))
+                    .onTimeout(e -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
+                    .onError((p, e) -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                     .unwrap(AmsTCPPacket::getUserdata)
                     .check(userdata -> userdata.getInvokeId() == readDeviceInfoRequest.getInvokeId())
                     .only(AdsReadDeviceInfoResponse.class)
@@ -192,8 +192,8 @@ public class AdsProtocolLogic extends Plc4xProtocolBase<AmsTCPPacket> implements
                         RequestTransactionManager.RequestTransaction readOnlineVersionNumberTx = tm.startRequest();
                         readOnlineVersionNumberTx.submit(() -> context.sendRequest(new AmsTCPPacket(readOnlineVersionNumberRequest))
                             .expectResponse(AmsTCPPacket.class, Duration.ofMillis(configuration.getTimeoutRequest()))
-                            .onTimeout(e -> context.getChannel().pipeline().fireExceptionCaught(e))
-                            .onError((p, e) -> context.getChannel().pipeline().fireExceptionCaught(e))
+                            .onTimeout(e -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
+                            .onError((p, e) -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                             .unwrap(AmsTCPPacket::getUserdata)
                             .check(userdata -> userdata.getInvokeId() == readOnlineVersionNumberRequest.getInvokeId())
                             .only(AdsReadWriteResponse.class)
@@ -216,8 +216,8 @@ public class AdsProtocolLogic extends Plc4xProtocolBase<AmsTCPPacket> implements
                                     RequestTransactionManager.RequestTransaction readSymbolVersionNumberTx = tm.startRequest();
                                     readSymbolVersionNumberTx.submit(() -> context.sendRequest(new AmsTCPPacket(readSymbolVersionNumberRequest))
                                         .expectResponse(AmsTCPPacket.class, Duration.ofMillis(configuration.getTimeoutRequest()))
-                                        .onTimeout(e -> context.getChannel().pipeline().fireExceptionCaught(e))
-                                        .onError((p, e) -> context.getChannel().pipeline().fireExceptionCaught(e))
+                                        .onTimeout(e -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
+                                        .onError((p, e) -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                                         .unwrap(AmsTCPPacket::getUserdata)
                                         .check(userdata -> userdata.getInvokeId() == readSymbolVersionNumberRequest.getInvokeId())
                                         .only(AdsReadResponse.class)

@@ -29,6 +29,13 @@
     </encoder>
   </appender>
 
+  <!-- ADS Secure handlers log handshake progress at INFO; keep them visible during manual tests. -->
+  <!-- Change TlsAlertBufferingHandler to "debug" to trace raw TLS record flow (very verbose). -->
+  <logger name="org.apache.plc4x.java.ads.security" level="info" />
+  <logger name="org.apache.plc4x.java.ads.AdsSecureProtocolStackConfigurer" level="info" />
+  <!-- ADS protocol-logic connection steps (symbol table loading etc.) -->
+  <logger name="org.apache.plc4x.java.ads.protocol" level="info" />
+
   <root level="warn">
     <appender-ref ref="STDOUT" />
   </root>

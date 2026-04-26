@@ -20,6 +20,7 @@ package org.apache.plc4x.java.ads;
 
 import io.netty.buffer.ByteBuf;
 import org.apache.plc4x.java.ads.configuration.AdsConfiguration;
+import org.apache.plc4x.java.ads.configuration.AdsSecureConfiguration;
 import org.apache.plc4x.java.ads.configuration.AdsTcpTransportConfiguration;
 import org.apache.plc4x.java.ads.discovery.AdsPlcDiscoverer;
 import org.apache.plc4x.java.ads.protocol.AdsProtocolLogic;
@@ -32,7 +33,7 @@ import org.apache.plc4x.java.spi.connection.GeneratedDriverBase;
 import org.apache.plc4x.java.spi.connection.ProtocolStackConfigurer;
 import org.apache.plc4x.java.spi.connection.SingleProtocolStackConfigurer;
 
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.ToIntFunction;
@@ -92,7 +93,8 @@ public class AdsPlcDriver extends GeneratedDriverBase<AmsTCPPacket> {
 
     @Override
     protected Class<? extends PlcConnectionConfiguration> getConfigurationClass() {
-        return AdsConfiguration.class;
+        // AdsSecureConfiguration extends AdsConfiguration, so it covers both plain and secure
+        return AdsSecureConfiguration.class;
     }
 
     @Override
@@ -111,7 +113,7 @@ public class AdsPlcDriver extends GeneratedDriverBase<AmsTCPPacket> {
 
     @Override
     protected List<String> getSupportedTransportCodes() {
-        return Collections.singletonList("tcp");
+        return Arrays.asList("tcp");
     }
 
     /**
@@ -123,16 +125,19 @@ public class AdsPlcDriver extends GeneratedDriverBase<AmsTCPPacket> {
         return false;
     }
 
+    /**
+     * Returns the {@link AdsSecureProtocolStackConfigurer} for all connections.
+     *
+     * <p>When {@link AdsSecureConfiguration#isSecure()} is {@code true}, the configurer builds
+     * a TLS 1.2 pipeline with {@link org.apache.plc4x.java.ads.security.AdsSecureChannelHandler}.
+     * When {@code false}, it builds the same plain ADS pipeline as before.
+     */
     @Override
     protected ProtocolStackConfigurer<AmsTCPPacket> getStackConfigurer() {
-        return SingleProtocolStackConfigurer.builder(AmsTCPPacket.class, AmsTCPPacket::staticParse)
-            .withPacketSizeEstimator(ByteLengthEstimator.class)
-            .withProtocol(AdsProtocolLogic.class)
-            .littleEndian()
-            .build();
+        return new AdsSecureProtocolStackConfigurer();
     }
 
-    /** Estimate the Length of a Packet */
+    /** Estimate the Length of a Packet (used by plain ADS pipeline path). */
     public static class ByteLengthEstimator implements ToIntFunction<ByteBuf> {
         @Override
         public int applyAsInt(ByteBuf byteBuf) {
