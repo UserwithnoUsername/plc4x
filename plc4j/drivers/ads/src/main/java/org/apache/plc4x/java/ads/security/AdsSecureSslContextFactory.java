@@ -255,7 +255,7 @@ public final class AdsSecureSslContextFactory {
      * The provider is loaded reflectively to avoid a hard compile-time dependency on
      * {@code bctls-jdk18on}.
      */
-    @SuppressWarnings("unchecked")
+
     private static SSLContext buildPskSslContextWithBc(String identity, byte[] psk) throws Exception {
         // Dynamically register the Bouncy Castle JSSE provider
         Provider bcJsseProvider;
@@ -338,7 +338,7 @@ public final class AdsSecureSslContextFactory {
             throw new IllegalArgumentException("Certificate path must not be null or empty");
         }
         CertificateFactory cf = CertificateFactory.getInstance("X.509");
-        try (InputStream is = new FileInputStream(new File(path))) {
+        try (InputStream is = new FileInputStream(path)) {
             Certificate cert = cf.generateCertificate(is);
             return (X509Certificate) cert;
         }
