@@ -201,15 +201,18 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
             }
         }
 
-        // Detect TLS close (received close_notify)
+        // Drain decrypted application data BEFORE checking isClosed().
+        // TwinCAT may deliver a close_notify in the same TCP segment as the AMS response.
+        // BC processes close_notify during offerInput() and marks isClosed() = true, so
+        // checking first would skip decrypted data BC has already buffered.
+        drainDecryptedInput(ctx);
+
+        // Detect TLS close (received close_notify) — checked after draining so data isn't lost
         if (tlsProtocol.isClosed()) {
-            drainOutput(ctx, null);
+            drainOutput(ctx, null); // send our own close_notify
             ctx.close();
             return;
         }
-
-        // Forward decrypted application data downstream
-        drainDecryptedInput(ctx);
 
         // Final output drain (BC may generate output while processing app data)
         drainOutput(ctx, null);
@@ -250,6 +253,7 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
         try {
             byte[] bytes = new byte[buf.readableBytes()];
             buf.readBytes(bytes);
+            logger.info("ADS Secure PSK: sending {} byte(s) of TLS app data", bytes.length);
             tlsProtocol.writeApplicationData(bytes, 0, bytes.length);
             drainOutput(ctx, promise);
         } catch (IOException e) {
@@ -284,7 +288,7 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
             if (available <= 0) break;
             int read = tlsProtocol.readInput(tmp, 0, Math.min(available, tmp.length));
             if (read <= 0) break;
-            logger.debug("ADS Secure PSK inbound: {} decrypted byte(s)", read);
+            logger.info("ADS Secure PSK: received {} decrypted byte(s) from PLC", read);
             ctx.fireChannelRead(Unpooled.copiedBuffer(tmp, 0, read));
         }
     }

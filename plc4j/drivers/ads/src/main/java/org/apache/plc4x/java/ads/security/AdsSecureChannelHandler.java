@@ -89,7 +89,6 @@ import java.util.ArrayDeque;
  *    2- 5     4   Total AMS frame size = 32 + payloadLength (uint32 LE)
  * </pre>
  */
-@io.netty.channel.ChannelHandler.Sharable
 public class AdsSecureChannelHandler extends ChannelDuplexHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(AdsSecureChannelHandler.class);
@@ -177,46 +176,61 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
                 "PLC must be configured to allow self-signed certificates.");
         } else if (state == State.READING_CONNECT_INFO) {
             int accumulated = accumulator != null ? accumulator.readableBytes() : 0;
-            TlsAlertBufferingHandler alertHandler =
-                ctx.pipeline().get(TlsAlertBufferingHandler.class);
-            boolean serverSentCloseNotify =
-                alertHandler != null && alertHandler.hadDeferredAlerts();
+            AdsSecureAuthMode mode = config.getAuthMode();
 
-            if (serverSentCloseNotify && accumulated == 0) {
-                // PLC sent TLS close_notify immediately after our TlsConnectInfo – no response at all.
-                // This is a clean application-layer rejection by TwinCAT.
-                AdsSecureAuthMode mode = config.getAuthMode();
-                if (mode == AdsSecureAuthMode.SSC) {
-                    logger.error("""
-                        ADS Secure SSC: server sent close_notify without a TlsConnectInfo response. \
-                        TwinCAT rejected the connection at the application layer. \
-                        Possible causes:
-                          1) StaticRoutes.xml <Server> block is missing SelfSigned="true" – SSC inbound is disabled.
-                             Add SelfSigned="true" IgnoreCn="true" to the <Tls> element of the <Server> section.
-                          2) The client certificate fingerprint is not registered in a <Route> entry yet.
-                             Run SSC first-connect (with username+password) to register the cert.
-                          3) The client certificate was regenerated after the route was added \
-                        (fingerprint mismatch).""");
-                } else if (mode == AdsSecureAuthMode.SCA) {
-                    logger.error("""
-                        ADS Secure SCA: server sent close_notify without a TlsConnectInfo response. \
-                        TwinCAT rejected the connection at the application layer. \
-                        Possible causes:
-                          1) The client certificate is not signed by the CA configured in \
-                        <Server><Tls><Ca> on the PLC.
-                          2) The PLC's server certificate is not signed by the CA given in ca-cert-path.
-                          3) accept-any-server-cert=true is NOT set and the CA path is wrong.""");
+            if (mode == AdsSecureAuthMode.PSK) {
+                // For PSK, BcPskTlsChannelHandler handles close_notify detection and calls ctx.close().
+                // Any channel close while waiting for the TlsConnectInfo response is a PSK rejection.
+                if (accumulated == 0) {
+                    logger.error("ADS Secure PSK: server closed the connection without sending a " +
+                        "TlsConnectInfo response. TwinCAT rejected the PSK at the application layer. " +
+                        "Possible causes:\n" +
+                        "  1) StaticRoutes.xml has no <Server><Tls><Psk> entry with identity '{}'.\n" +
+                        "  2) The PSK identity/password does not match the StaticRoutes.xml entry.\n" +
+                        "  3) The derived key (SHA-256(toUpperCase(identity)+password)) does not match.",
+                        config.getPskIdentity());
                 } else {
-                    logger.error("ADS Secure PSK: server sent close_notify without a TlsConnectInfo response. " +
-                        "Verify that the PLC has a <Server><Tls><Psk> entry in StaticRoutes.xml with " +
-                        "matching identity '{}' and the derived key.", config.getPskIdentity());
+                    logger.error("ADS Secure PSK: connection closed after receiving {} byte(s) of TlsConnectInfo " +
+                        "response (expected 64). Partial response from TwinCAT – likely a protocol mismatch.",
+                        accumulated);
                 }
             } else {
-                logger.error("ADS Secure: connection closed by server before TlsConnectInfo response was received " +
-                    "(state=READING_CONNECT_INFO, {} byte(s) accumulated, closeNotify={}). " +
-                    "Likely causes: wrong credentials, cert is not truly self-signed (for SSC), " +
-                    "or TwinCAT is not configured for this auth mode.",
-                    accumulated, serverSentCloseNotify);
+                TlsAlertBufferingHandler alertHandler =
+                    ctx.pipeline().get(TlsAlertBufferingHandler.class);
+                boolean serverSentCloseNotify =
+                    alertHandler != null && alertHandler.hadDeferredAlerts();
+
+                if (serverSentCloseNotify && accumulated == 0) {
+                    // PLC sent TLS close_notify immediately after our TlsConnectInfo – no response at all.
+                    // This is a clean application-layer rejection by TwinCAT.
+                    if (mode == AdsSecureAuthMode.SSC) {
+                        logger.error("""
+                            ADS Secure SSC: server sent close_notify without a TlsConnectInfo response. \
+                            TwinCAT rejected the connection at the application layer. \
+                            Possible causes:
+                              1) StaticRoutes.xml <Server> block is missing SelfSigned="true" – SSC inbound is disabled.
+                                 Add SelfSigned="true" IgnoreCn="true" to the <Tls> element of the <Server> section.
+                              2) The client certificate fingerprint is not registered in a <Route> entry yet.
+                                 Run SSC first-connect (with username+password) to register the cert.
+                              3) The client certificate was regenerated after the route was added \
+                            (fingerprint mismatch).""");
+                    } else if (mode == AdsSecureAuthMode.SCA) {
+                        logger.error("""
+                            ADS Secure SCA: server sent close_notify without a TlsConnectInfo response. \
+                            TwinCAT rejected the connection at the application layer. \
+                            Possible causes:
+                              1) The client certificate is not signed by the CA configured in \
+                            <Server><Tls><Ca> on the PLC.
+                              2) The PLC's server certificate is not signed by the CA given in ca-cert-path.
+                              3) accept-any-server-cert=true is NOT set and the CA path is wrong.""");
+                    }
+                } else {
+                    logger.error("ADS Secure: connection closed by server before TlsConnectInfo response was received " +
+                        "(state=READING_CONNECT_INFO, {} byte(s) accumulated, closeNotify={}). " +
+                        "Likely causes: wrong credentials, cert is not truly self-signed (for SSC), " +
+                        "or TwinCAT is not configured for this auth mode.",
+                        accumulated, serverSentCloseNotify);
+                }
             }
         } else if (state == State.CONNECTED) {
             if (sscAddRemote) {
@@ -382,6 +396,23 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
                 break; // incomplete frame – wait for more data
             }
 
+            // Peek at the AMS errorCode (uint32 LE at offset 24) before consuming.
+            // A non-zero errorCode means TwinCAT rejected the command at the AMS routing layer.
+            long amsErrorCode = accumulator.getUnsignedIntLE(accumulator.readerIndex() + 24);
+            if (amsErrorCode != 0) {
+                int cmdIdRaw = accumulator.getUnsignedShortLE(accumulator.readerIndex() + 16);
+                logger.error(
+                    "ADS Secure inbound: AMS-level error response received! " +
+                    "errorCode=0x{} commandId=0x{} payloadLength={}. " +
+                    "TwinCAT rejected the AMS command at the transport/routing layer. " +
+                    "Common causes: (0x06) target AMS port not found – TwinCAT runtime (port 851) not running; " +
+                    "(0x07) target host not reachable – AMS routing table has no entry for this Net ID; " +
+                    "(0x0D) port not connected; (0x12) port deactivated.",
+                    String.format("%08X", amsErrorCode),
+                    String.format("%04X", cmdIdRaw),
+                    payloadLength);
+            }
+
             // Extract the complete raw AMS frame
             ByteBuf amsFrame = ctx.alloc().buffer((int) totalAmsFrameSize);
             accumulator.readBytes(amsFrame, (int) totalAmsFrameSize);
@@ -396,10 +427,8 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
             CompositeByteBuf fullFrame = ctx.alloc().compositeBuffer(2);
             fullFrame.addComponents(true, syntheticHeader, amsFrame);
 
-            if (logger.isTraceEnabled()) {
-                logger.trace("ADS Secure inbound: assembled AMS frame of {} bytes (payload {} bytes)",
-                    totalAmsFrameSize + AMS_TCP_HEADER_SIZE, payloadLength);
-            }
+            logger.debug("ADS Secure inbound: assembled AMS frame of {} bytes (payload {} bytes)",
+                totalAmsFrameSize + AMS_TCP_HEADER_SIZE, payloadLength);
 
             ctx.fireChannelRead(fullFrame);
         }
@@ -477,9 +506,7 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
         // Strip the 6-byte synthetic AMS/TCP header that GeneratedProtocolMessageCodec added
         serialized.skipBytes(AMS_TCP_HEADER_SIZE);
 
-        if (logger.isTraceEnabled()) {
-            logger.trace("ADS Secure outbound: sending raw AMS frame of {} bytes", serialized.readableBytes());
-        }
+        logger.debug("ADS Secure outbound: sending raw AMS frame of {} bytes", serialized.readableBytes());
 
         ctx.write(serialized, promise);
     }

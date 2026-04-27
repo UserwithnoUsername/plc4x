@@ -167,9 +167,26 @@ public class AdsProtocolLogic extends Plc4xProtocolBase<AmsTCPPacket> implements
                     .onError((p, e) -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                     .unwrap(AmsTCPPacket::getUserdata)
                     .check(userdata -> userdata.getInvokeId() == readDeviceInfoRequest.getInvokeId())
-                    .only(AdsReadDeviceInfoResponse.class)
-                    .handle(readDeviceInfoResponse -> {
+                    .handle(userdata -> {
                         readDeviceInfoTx.endRequest();
+                        if (userdata instanceof ErrorResponse errorResponse) {
+                            long errCode = errorResponse.getErrorCode();
+                            ReturnCode rc = ReturnCode.enumForValue(errCode);
+                            String rcName = rc != null ? rc.name() : "UNKNOWN";
+                            context.getChannel().pipeline().fireExceptionCaught(new PlcConnectionException(
+                                String.format("ReadDeviceInfo failed: TwinCAT returned AMS error 0x%08X (%s). " +
+                                    "Common causes: (0x06) target AMS port not in routing table; " +
+                                    "(0x07) target host not reachable – TwinCAT runtime (port 851) may not be running; " +
+                                    "(0x0D) port not connected. " +
+                                    "Verify TwinCAT PLC runtime is started and the AMS Net ID route is valid.",
+                                    errCode, rcName)));
+                            return;
+                        }
+                        if (!(userdata instanceof AdsReadDeviceInfoResponse readDeviceInfoResponse)) {
+                            context.getChannel().pipeline().fireExceptionCaught(new PlcConnectionException(
+                                "ReadDeviceInfo: unexpected response type " + userdata.getClass().getSimpleName()));
+                            return;
+                        }
                         if (readDeviceInfoResponse.getResult() != ReturnCode.OK) {
                             context.getChannel().pipeline().fireExceptionCaught(new PlcConnectionException(
                                 "Error reading device info. Got: " + readDeviceInfoResponse.getResult()));
@@ -193,7 +210,7 @@ public class AdsProtocolLogic extends Plc4xProtocolBase<AmsTCPPacket> implements
                             .onTimeout(e -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                             .onError((p, e) -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                             .unwrap(AmsTCPPacket::getUserdata)
-                            .check(userdata -> userdata.getInvokeId() == readOnlineVersionNumberRequest.getInvokeId())
+                            .check(ud -> ud.getInvokeId() == readOnlineVersionNumberRequest.getInvokeId())
                             .only(AdsReadWriteResponse.class)
                             .handle(readOnlineVersionNumberResponse -> {
                                 readOnlineVersionNumberTx.endRequest();
@@ -217,7 +234,7 @@ public class AdsProtocolLogic extends Plc4xProtocolBase<AmsTCPPacket> implements
                                         .onTimeout(e -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                                         .onError((p, e) -> { if (context.getChannel().isActive()) context.getChannel().pipeline().fireExceptionCaught(e); })
                                         .unwrap(AmsTCPPacket::getUserdata)
-                                        .check(userdata -> userdata.getInvokeId() == readSymbolVersionNumberRequest.getInvokeId())
+                                        .check(ud -> ud.getInvokeId() == readSymbolVersionNumberRequest.getInvokeId())
                                         .only(AdsReadResponse.class)
                                         .handle(readSymbolVersionNumberResponse -> {
                                             readSymbolVersionNumberTx.endRequest();

@@ -29,9 +29,9 @@
     </encoder>
   </appender>
 
-  <!-- ADS Secure handlers log handshake progress at INFO; keep them visible during manual tests. -->
-  <!-- Change TlsAlertBufferingHandler to "debug" to trace raw TLS record flow (very verbose). -->
-  <logger name="org.apache.plc4x.java.ads.security" level="info" />
+  <!-- ADS Secure handlers: set to "debug" to see AMS frame send/receive byte counts.
+       Set to "trace" to see raw TLS record flow (very verbose). -->
+  <logger name="org.apache.plc4x.java.ads.security" level="debug" />
   <logger name="org.apache.plc4x.java.ads.AdsSecureProtocolStackConfigurer" level="info" />
   <!-- ADS protocol-logic connection steps (symbol table loading etc.) -->
   <logger name="org.apache.plc4x.java.ads.protocol" level="info" />
