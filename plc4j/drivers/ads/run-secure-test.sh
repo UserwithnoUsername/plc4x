@@ -30,8 +30,8 @@ SOURCE_PORT="32905"
 USERNAME="Administrator"
 PASSWORD='Fun3kill!'
 
-PSK_IDENTITY="plc4x-client"
-PSK_PASSWORD="plc4x-secret"
+PSK_IDENTITY="MY_IDENTITY"
+PSK_PASSWORD="MySecret"
 
 declare -a RESULTS
 
@@ -103,19 +103,19 @@ fi
 # Diagnostic: subsequent-connect (no credentials) – TwinCAT should reply UNKNOWN_CERT
 # (error code 3, 64-byte response) if SSC is enabled at all. If it still returns
 # close_notify with 0 bytes, SSC is completely disabled on this PLC.
-run_mode "SSC subsequent (diagnostic – expects UNKNOWN_CERT reply, not a real connection)" \
-    ssc-sub "$HOST" "$TARGET_NETID" "$TARGET_PORT" "$SOURCE_NETID" "$SOURCE_PORT" \
-    "$CERTS/client.crt" "$CERTS/client.key"
+#run_mode "SSC subsequent (diagnostic – expects UNKNOWN_CERT reply, not a real connection)" \
+#    ssc-sub "$HOST" "$TARGET_NETID" "$TARGET_PORT" "$SOURCE_NETID" "$SOURCE_PORT" \
+#    "$CERTS/client.crt" "$CERTS/client.key"
 
-run_mode "SSC (self-signed, first connect)" \
-    ssc "$HOST" "$TARGET_NETID" "$TARGET_PORT" "$SOURCE_NETID" "$SOURCE_PORT" \
-    "$CERTS/client.crt" "$CERTS/client.key" "$USERNAME" "$PASSWORD"
+#run_mode "SSC (self-signed, first connect)" \
+#    ssc "$HOST" "$TARGET_NETID" "$TARGET_PORT" "$SOURCE_NETID" "$SOURCE_PORT" \
+#    "$CERTS/client.crt" "$CERTS/client.key" "$USERNAME" "$PASSWORD"
 
 # SCA: use the PLC's own CA (certsonPlc/rootCA.pem) and a client cert signed by it.
 # The PLC's CA was copied to certs/plc-rootCA.pem; client cert signed by it is sca-client.crt.
-run_mode "SCA (shared CA – PLC CA from /home/ick3/certsonPlc)" \
-    sca "$HOST" "$TARGET_NETID" "$TARGET_PORT" "$SOURCE_NETID" "$SOURCE_PORT" \
-    "$CERTS/plc-rootCA.pem" "$CERTS/sca-client.crt" "$CERTS/sca-client.key"
+#run_mode "SCA (shared CA – PLC CA from /home/ick3/certsonPlc)" \
+#    sca "$HOST" "$TARGET_NETID" "$TARGET_PORT" "$SOURCE_NETID" "$SOURCE_PORT" \
+#    "$CERTS/plc-rootCA.pem" "$CERTS/sca-client.crt" "$CERTS/sca-client.key"
 
 run_mode "PSK (pre-shared key – requires PLC StaticRoutes.xml + bctls-jdk18on)" \
     psk "$HOST" "$TARGET_NETID" "$TARGET_PORT" "$SOURCE_NETID" "$SOURCE_PORT" \

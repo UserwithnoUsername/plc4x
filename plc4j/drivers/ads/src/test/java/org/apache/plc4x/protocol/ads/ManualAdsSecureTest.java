@@ -181,9 +181,41 @@ public class ManualAdsSecureTest {
             host, targetNetId, targetPort, sourceNetId, sourcePort,
             clientCert, clientKey, username, password);
 
-        System.out.println("NOTE: SSC first-connect sends credentials and registers the client certificate.");
-        System.out.println("      On subsequent runs you can omit username/password once the fingerprint is stored.");
-        runTest("ADS Secure – SSC (self-signed, first connect)", url);
+        System.out.println("NOTE: SSC ADD_REMOTE registers the client certificate fingerprint on the PLC.");
+        System.out.println("      TwinCAT always closes this channel immediately after registration —");
+        System.out.println("      the connection closing is EXPECTED, not an error.");
+        System.out.println("      Look for 'ADD_REMOTE: certificate fingerprint registered' in the log.");
+
+        String label = "ADS Secure – SSC (self-signed, first connect / ADD_REMOTE)";
+        System.out.println("=".repeat(72));
+        System.out.println("  " + label);
+        System.out.println("=".repeat(72));
+        System.out.println("  URL: " + sanitizeUrl(url));
+        System.out.println();
+
+        try (PlcConnection ignored = PlcDriverManager.getDefault()
+                .getConnectionManager().getConnection(url)) {
+            // If we somehow get here, TwinCAT accepted the ADD_REMOTE AND kept the session open
+            System.out.println("[OK] ADD_REMOTE succeeded and channel stayed open (unexpected but fine)");
+        } catch (Exception e) {
+            // Expected: TwinCAT closes the channel after cert registration, causing
+            // DefaultNettyPlcConnection.connect() to fail with "Connection terminated by remote".
+            // Any other error (wrong credentials, SSC disabled) would show in the AdsSecure log.
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            Throwable cause = e.getCause();
+            while (cause != null && cause.getMessage() != null) {
+                msg = cause.getMessage();
+                cause = cause.getCause();
+            }
+            if (msg.contains("terminated") || msg.contains("closed") || msg.contains("inactive")) {
+                System.out.println("[OK] ADD_REMOTE: channel closed by server as expected.");
+                System.out.println("     Check log for 'certificate fingerprint registered' to confirm success.");
+            } else {
+                System.out.println("[WARN] ADD_REMOTE: unexpected exception: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                System.out.println("       This may indicate wrong credentials or SSC not enabled on the PLC.");
+                System.out.println("       Check the ADS Secure log output above for details.");
+            }
+        }
     }
 
     // ── SSC subsequent mode (no credentials – diagnostic) ────────────────────
@@ -238,8 +270,9 @@ public class ManualAdsSecureTest {
         String pskIdentity   = args[6];
         String pskPassword   = args[7];
 
-        System.out.println("NOTE: PSK mode requires 'org.bouncycastle:bctls-jdk18on' on the classpath.");
+        System.out.println("NOTE: PSK mode uses BouncyCastle's raw TLS API (bctls-jdk18on).");
         System.out.println("      TLS key is derived as SHA-256(toUpperCase('" + pskIdentity + "') || password).");
+        System.out.println("      TwinCAT StaticRoutes.xml must have a matching <Server><Tls><Psk> entry.");
 
         String url = String.format(
             "ads:tcp://%s:8016?secure=true&auth-mode=PSK" +

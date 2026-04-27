@@ -246,7 +246,7 @@ public final class AdsSecureSslContextFactory {
      * Derives the actual TLS pre-shared key from identity and password as specified by Beckhoff:
      * {@code SHA-256(toUpperCase(identity) || password)}.
      */
-    static byte[] derivePsk(String identity, String password) throws NoSuchAlgorithmException {
+    public static byte[] derivePsk(String identity, String password) throws NoSuchAlgorithmException {
         if (identity == null || password == null) {
             throw new IllegalArgumentException("PSK identity and password must not be null");
         }

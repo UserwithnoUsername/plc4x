@@ -28,6 +28,7 @@ import org.apache.plc4x.java.ads.protocol.AdsProtocolLogic;
 import org.apache.plc4x.java.ads.readwrite.AmsTCPPacket;
 import org.apache.plc4x.java.ads.security.AdsSecureChannelHandler;
 import org.apache.plc4x.java.ads.security.AdsSecureSslContextFactory;
+import org.apache.plc4x.java.ads.security.BcPskTlsChannelHandler;
 import org.apache.plc4x.java.ads.security.TlsAlertBufferingHandler;
 import org.apache.plc4x.java.api.authentication.PlcAuthentication;
 import org.apache.plc4x.java.api.exceptions.PlcRuntimeException;
@@ -43,7 +44,6 @@ import org.apache.plc4x.java.spi.netty.NettyHashTimerTimeoutManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -123,19 +123,24 @@ public class AdsSecureProtocolStackConfigurer implements ProtocolStackConfigurer
 
     private void addSecurePipelineHandlers(ChannelPipeline pipeline, AdsSecureConfiguration config) {
         AdsSecureAuthMode mode = config.getAuthMode();
-        // Must be first: buffers post-handshake TLS Alert records so APP_DATA reaches SslHandler
-        // before close_notify (TwinCAT sends them in reverse order, which confuses JDK SSLEngine)
-        pipeline.addLast(new TlsAlertBufferingHandler());
         try {
             if (mode == AdsSecureAuthMode.PSK) {
+                // PSK uses BC's raw TlsClientProtocol — no JDK SSLEngine in the pipeline,
+                // so TlsAlertBufferingHandler (which guards against JDK SSLEngine's close_notify
+                // ordering bug) is not needed and not added.
                 addPskHandlers(pipeline, config);
             } else {
+                // Cert-based modes (SSC/SCA) use JDK SslHandler.
+                // TlsAlertBufferingHandler must be first: it buffers post-handshake TLS Alert
+                // records so APP_DATA reaches SslHandler before close_notify (TwinCAT sends them
+                // in reverse order, which confuses JDK SSLEngine).
+                pipeline.addLast(new TlsAlertBufferingHandler());
                 addCertificateHandlers(pipeline, config);
             }
         } catch (Exception e) {
             throw new PlcRuntimeException("Failed to initialize ADS Secure TLS context: " + e.getMessage(), e);
         }
-        // The TlsConnectInfo handshake + AMS frame adapter sits between SslHandler and the codec
+        // The TlsConnectInfo handshake + AMS frame adapter sits between SslHandler/BcPskHandler and the codec
         pipeline.addLast(new AdsSecureChannelHandler(config));
     }
 
@@ -157,14 +162,13 @@ public class AdsSecureProtocolStackConfigurer implements ProtocolStackConfigurer
     }
 
     private void addPskHandlers(ChannelPipeline pipeline, AdsSecureConfiguration config) throws Exception {
-        SSLContext sslContext = AdsSecureSslContextFactory.buildPskSslContext(config);
-        SSLEngine engine = sslContext.createSSLEngine();
-        engine.setUseClientMode(true);
-        engine.setEnabledProtocols(new String[]{"TLSv1.2"});
-        engine.setEnabledCipherSuites(AdsSecureSslContextFactory.PSK_CIPHER_SUITES);
-        SslHandler sslHandler = new SslHandler(engine);
-        pipeline.addLast(sslHandler);
-        logger.debug("ADS Secure PSK: TLS 1.2 PSK handler added");
+        // BC JSSE (BouncyCastleJsseProvider) does not expose PSK via KeyManager in BC 1.84.
+        // PSK requires BC's low-level TlsClientProtocol API; BcPskTlsChannelHandler wraps it.
+        byte[] derivedPsk = AdsSecureSslContextFactory.derivePsk(
+            config.getPskIdentity(), config.getPskPassword());
+        pipeline.addLast(new BcPskTlsChannelHandler(config.getPskIdentity(), derivedPsk));
+        logger.debug("ADS Secure PSK: BC raw TLS PSK handler added (identity='{}')",
+            config.getPskIdentity());
     }
 
     // ── AMS frame codec ───────────────────────────────────────────────────────
