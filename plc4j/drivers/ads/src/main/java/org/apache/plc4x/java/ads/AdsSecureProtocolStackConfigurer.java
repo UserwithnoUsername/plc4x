@@ -46,7 +46,6 @@ import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLEngine;
 import java.util.List;
-import java.util.function.ToIntFunction;
 
 import static org.apache.plc4x.java.spi.configuration.ConfigurationFactory.configure;
 

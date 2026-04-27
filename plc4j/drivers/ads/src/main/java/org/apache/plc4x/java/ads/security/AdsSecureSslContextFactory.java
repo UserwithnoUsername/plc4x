@@ -156,18 +156,13 @@ public final class AdsSecureSslContextFactory {
      */
     public static SslContext buildSslContext(AdsSecureConfiguration config) throws Exception {
         AdsSecureAuthMode mode = config.getAuthMode();
-        switch (mode) {
-            case SCA:
-                return buildScaSslContext(config);
-            case SSC:
-                return buildSscSslContext(config);
-            case PSK:
-                throw new UnsupportedOperationException(
-                    "PSK mode requires a separate SSLContext built via buildPskSslContext(). " +
+        return switch (mode) {
+            case SCA -> buildScaSslContext(config);
+            case SSC -> buildSscSslContext(config);
+            case PSK -> throw new UnsupportedOperationException(
+                "PSK mode requires a separate SSLContext built via buildPskSslContext(). " +
                     "Use AdsSecureProtocolStackConfigurer which handles both paths.");
-            default:
-                throw new IllegalArgumentException("Unknown auth mode: " + mode);
-        }
+        };
     }
 
     /**

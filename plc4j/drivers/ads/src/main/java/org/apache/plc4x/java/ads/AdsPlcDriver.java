@@ -30,7 +30,6 @@ import org.apache.plc4x.java.spi.messages.DefaultPlcDiscoveryRequest;
 import org.apache.plc4x.java.spi.connection.GeneratedDriverBase;
 import org.apache.plc4x.java.spi.connection.ProtocolStackConfigurer;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.ToIntFunction;

@@ -289,14 +289,13 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
                 }
                 yield TlsConnectInfo.forSscSubsequent(config.getSourceAmsNetId(), hostname);
             }
-            default -> throw new IllegalStateException("Unexpected auth mode: " + mode);
         };
     }
 
     // ── Inbound data handling ─────────────────────────────────────────────────
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (!(msg instanceof ByteBuf incoming)) {
             ctx.fireChannelRead(msg);
             return;

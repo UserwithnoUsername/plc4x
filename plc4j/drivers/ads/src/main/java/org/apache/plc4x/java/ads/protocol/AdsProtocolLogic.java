@@ -133,13 +133,11 @@ public class AdsProtocolLogic extends Plc4xProtocolBase<AmsTCPPacket> implements
         // If we have connection credentials available, try to set up the AMS routes.
         CompletableFuture<Void> setupAmsRouteFuture;
         if (context.getAuthentication() != null) {
-            if (!(context.getAuthentication() instanceof PlcUsernamePasswordAuthentication)) {
+            if (!(context.getAuthentication() instanceof PlcUsernamePasswordAuthentication usernamePasswordAuthentication)) {
                 context.getChannel().pipeline().fireExceptionCaught(new PlcConnectionException(
                     "This type of connection only supports username-password authentication"));
                 return;
             }
-            PlcUsernamePasswordAuthentication usernamePasswordAuthentication =
-                (PlcUsernamePasswordAuthentication) context.getAuthentication();
 
             setupAmsRouteFuture = setupAmsRoute(usernamePasswordAuthentication);
         } else {

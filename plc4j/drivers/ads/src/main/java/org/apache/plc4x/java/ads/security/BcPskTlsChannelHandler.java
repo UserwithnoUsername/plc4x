@@ -144,7 +144,7 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
     }
 
     @Override
-    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+    public void channelInactive(ChannelHandlerContext ctx) {
         if (!handshakeDone && !handshakeFailed) {
             failHandshake(ctx, new SSLException("Channel closed during PSK TLS handshake"));
         }
@@ -156,7 +156,7 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         if (!handshakeDone && !handshakeFailed) {
             failHandshake(ctx, cause);
         } else {
@@ -363,7 +363,6 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
 
         /**
          * Suppresses the {@code extended_master_secret} extension (RFC 7627, type 0x0017).
-         *
          * BC 1.78+ adds this extension through a separate code path, independent of
          * {@link #getClientExtensions()} returning {@code null}. TwinCAT sends
          * {@code handshake_failure(40)} when it sees this extension in the ClientHello.

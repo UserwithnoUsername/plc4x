@@ -155,7 +155,7 @@ public class ManualAdsSecureTest {
 
     // ── SSC mode ─────────────────────────────────────────────────────────────
 
-    private static void runSsc(String[] args) throws Exception {
+    private static void runSsc(String[] args) {
         if (args.length < 10) {
             System.err.println("ssc mode requires: <host> <target-net-id> <target-port> <source-net-id> <source-port> <client-cert> <client-key> <username> <password>");
             return;
