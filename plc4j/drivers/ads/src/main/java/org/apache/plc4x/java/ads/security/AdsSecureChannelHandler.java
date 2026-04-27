@@ -151,9 +151,8 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
     // ── TLS handshake completion ───────────────────────────────────────────────
 
     @Override
-    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-        if (evt instanceof SslHandshakeCompletionEvent) {
-            SslHandshakeCompletionEvent tlsEvent = (SslHandshakeCompletionEvent) evt;
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+        if (evt instanceof SslHandshakeCompletionEvent tlsEvent) {
             if (tlsEvent.isSuccess()) {
                 logger.info("ADS Secure: TLS handshake completed, sending TlsConnectInfo (mode={})",
                     config.getAuthMode());
@@ -188,23 +187,25 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
                 // This is a clean application-layer rejection by TwinCAT.
                 AdsSecureAuthMode mode = config.getAuthMode();
                 if (mode == AdsSecureAuthMode.SSC) {
-                    logger.error("ADS Secure SSC: server sent close_notify without a TlsConnectInfo response. " +
-                        "TwinCAT rejected the connection at the application layer. " +
-                        "Possible causes:\n" +
-                        "  1) StaticRoutes.xml <Server> block is missing SelfSigned=\"true\" – SSC inbound is disabled.\n" +
-                        "     Add SelfSigned=\"true\" IgnoreCn=\"true\" to the <Tls> element of the <Server> section.\n" +
-                        "  2) The client certificate fingerprint is not registered in a <Route> entry yet.\n" +
-                        "     Run SSC first-connect (with username+password) to register the cert.\n" +
-                        "  3) The client certificate was regenerated after the route was added " +
-                        "(fingerprint mismatch).");
+                    logger.error("""
+                        ADS Secure SSC: server sent close_notify without a TlsConnectInfo response. \
+                        TwinCAT rejected the connection at the application layer. \
+                        Possible causes:
+                          1) StaticRoutes.xml <Server> block is missing SelfSigned="true" – SSC inbound is disabled.
+                             Add SelfSigned="true" IgnoreCn="true" to the <Tls> element of the <Server> section.
+                          2) The client certificate fingerprint is not registered in a <Route> entry yet.
+                             Run SSC first-connect (with username+password) to register the cert.
+                          3) The client certificate was regenerated after the route was added \
+                        (fingerprint mismatch).""");
                 } else if (mode == AdsSecureAuthMode.SCA) {
-                    logger.error("ADS Secure SCA: server sent close_notify without a TlsConnectInfo response. " +
-                        "TwinCAT rejected the connection at the application layer. " +
-                        "Possible causes:\n" +
-                        "  1) The client certificate is not signed by the CA configured in " +
-                        "<Server><Tls><Ca> on the PLC.\n" +
-                        "  2) The PLC's server certificate is not signed by the CA given in ca-cert-path.\n" +
-                        "  3) accept-any-server-cert=true is NOT set and the CA path is wrong.");
+                    logger.error("""
+                        ADS Secure SCA: server sent close_notify without a TlsConnectInfo response. \
+                        TwinCAT rejected the connection at the application layer. \
+                        Possible causes:
+                          1) The client certificate is not signed by the CA configured in \
+                        <Server><Tls><Ca> on the PLC.
+                          2) The PLC's server certificate is not signed by the CA given in ca-cert-path.
+                          3) accept-any-server-cert=true is NOT set and the CA path is wrong.""");
                 } else {
                     logger.error("ADS Secure PSK: server sent close_notify without a TlsConnectInfo response. " +
                         "Verify that the PLC has a <Server><Tls><Psk> entry in StaticRoutes.xml with " +
@@ -277,32 +278,29 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
 
     private TlsConnectInfo buildConnectInfo(String hostname) {
         AdsSecureAuthMode mode = config.getAuthMode();
-        switch (mode) {
-            case SCA:
-            case PSK:
-                return TlsConnectInfo.forScaOrPsk(config.getSourceAmsNetId(), hostname);
-            case SSC:
+        return switch (mode) {
+            case SCA, PSK -> TlsConnectInfo.forScaOrPsk(config.getSourceAmsNetId(), hostname);
+            case SSC -> {
                 if (config.getUsername() != null && !config.getUsername().isEmpty()) {
                     sscAddRemote = true;
-                    return TlsConnectInfo.forSscRegister(
+                    yield TlsConnectInfo.forSscRegister(
                         config.getSourceAmsNetId(), hostname,
                         config.getUsername(), config.getPassword());
                 }
-                return TlsConnectInfo.forSscSubsequent(config.getSourceAmsNetId(), hostname);
-            default:
-                throw new IllegalStateException("Unexpected auth mode: " + mode);
-        }
+                yield TlsConnectInfo.forSscSubsequent(config.getSourceAmsNetId(), hostname);
+            }
+            default -> throw new IllegalStateException("Unexpected auth mode: " + mode);
+        };
     }
 
     // ── Inbound data handling ─────────────────────────────────────────────────
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        if (!(msg instanceof ByteBuf)) {
+        if (!(msg instanceof ByteBuf incoming)) {
             ctx.fireChannelRead(msg);
             return;
         }
-        ByteBuf incoming = (ByteBuf) msg;
         try {
             accumulator.writeBytes(incoming);
         } finally {
@@ -325,7 +323,7 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
         }
     }
 
-    private void processConnectInfoResponse(ChannelHandlerContext ctx) throws Exception {
+    private void processConnectInfoResponse(ChannelHandlerContext ctx) {
         if (accumulator.readableBytes() < 64) {
             logger.info("ADS Secure: only {} byte(s) received so far, waiting for full 64-byte server response",
                 accumulator.readableBytes());
@@ -430,7 +428,7 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
      * through this {@code write()} override. Every message arriving here is an AMS frame.
      */
     @Override
-    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
         if (state != State.CONNECTED) {
             pendingWrites.add(new PendingWrite(msg, promise));
             return;
@@ -439,7 +437,7 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
     }
 
     @Override
-    public void flush(ChannelHandlerContext ctx) throws Exception {
+    public void flush(ChannelHandlerContext ctx) {
         ctx.flush();
     }
 
@@ -464,12 +462,11 @@ public class AdsSecureChannelHandler extends ChannelDuplexHandler {
     }
 
     private void writeStrippingHeader(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        if (!(msg instanceof ByteBuf)) {
+        if (!(msg instanceof ByteBuf serialized)) {
             ctx.write(msg, promise);
             return;
         }
 
-        ByteBuf serialized = (ByteBuf) msg;
         if (serialized.readableBytes() <= AMS_TCP_HEADER_SIZE) {
             logger.warn("ADS Secure outbound: buffer too short to strip AMS/TCP header ({} bytes), dropping",
                 serialized.readableBytes());

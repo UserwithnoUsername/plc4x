@@ -45,8 +45,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLEngine;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.util.List;
 import java.util.function.ToIntFunction;
 
@@ -91,12 +89,11 @@ public class AdsSecureProtocolStackConfigurer implements ProtocolStackConfigurer
             boolean passive,
             List<EventListener> listeners) {
 
-        if (!(configuration instanceof AdsSecureConfiguration)) {
+        if (!(configuration instanceof AdsSecureConfiguration secureConfig)) {
             throw new PlcRuntimeException(
                 "AdsSecureProtocolStackConfigurer requires AdsSecureConfiguration, got: " +
                 configuration.getClass().getName());
         }
-        AdsSecureConfiguration secureConfig = (AdsSecureConfiguration) configuration;
 
         if (secureConfig.isSecure()) {
             addSecurePipelineHandlers(pipeline, secureConfig);
@@ -204,15 +201,4 @@ public class AdsSecureProtocolStackConfigurer implements ProtocolStackConfigurer
         }
     }
 
-    // ── Byte-length estimator (kept for reference / plain path) ──────────────
-
-    public static class ByteLengthEstimator implements ToIntFunction<ByteBuf> {
-        @Override
-        public int applyAsInt(ByteBuf byteBuf) {
-            if (byteBuf.readableBytes() >= 6) {
-                return (int) byteBuf.getUnsignedIntLE(byteBuf.readerIndex() + 2) + 6;
-            }
-            return -1;
-        }
-    }
 }

@@ -22,7 +22,6 @@ import org.apache.plc4x.java.api.PlcConnection;
 import org.apache.plc4x.java.api.PlcDriverManager;
 import org.apache.plc4x.java.api.messages.*;
 import org.apache.plc4x.java.api.types.PlcResponseCode;
-import java.util.concurrent.CompletableFuture;
 
 import java.util.concurrent.TimeUnit;
 

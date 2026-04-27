@@ -107,7 +107,7 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     @Override
-    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+    public void handlerAdded(ChannelHandlerContext ctx) {
         // configurePipeline() is called after TCP connect, so the channel is already active
         // when this handler is inserted. Netty fires handlerAdded() but NOT channelActive()
         // for late-added handlers — mirror what Netty's own SslHandler does.
@@ -117,7 +117,7 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
     }
 
     @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    public void channelActive(ChannelHandlerContext ctx) {
         // Fallback for the (unlikely) case where the handler was added before TCP connect.
         startHandshake(ctx);
         ctx.fireChannelActive();
@@ -140,15 +140,7 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
 
         logger.info("ADS Secure PSK: TLS handshake started (identity='{}')",
             new String(identityBytes, StandardCharsets.UTF_8));
-
-        // Capture ClientHello bytes for diagnostics before sending
-        int outBytes = tlsProtocol.getAvailableOutputBytes();
-        if (outBytes > 0) {
-            byte[] clientHello = new byte[outBytes];
-            tlsProtocol.readOutput(clientHello, 0, outBytes);
-            logger.info("ADS Secure PSK: ClientHello {} bytes: {}", outBytes, bytesToHex(clientHello));
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(clientHello));
-        }
+        drainOutput(ctx, null); // send ClientHello
     }
 
     @Override
@@ -175,17 +167,14 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
     // ── Inbound ───────────────────────────────────────────────────────────────
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        if (!(msg instanceof ByteBuf)) {
+    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        if (!(msg instanceof ByteBuf buf)) {
             ctx.fireChannelRead(msg);
             return;
         }
-        ByteBuf buf = (ByteBuf) msg;
         byte[] bytes = new byte[buf.readableBytes()];
         buf.readBytes(bytes);
         buf.release();
-
-        logger.info("ADS Secure PSK: inbound {} bytes: {}", bytes.length, bytesToHex(bytes));
 
         try {
             tlsProtocol.offerInput(bytes);
@@ -229,30 +218,29 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
     // ── Outbound ──────────────────────────────────────────────────────────────
 
     @Override
-    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-        if (!(msg instanceof ByteBuf)) {
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        if (!(msg instanceof ByteBuf buf)) {
             ctx.write(msg, promise);
             return;
         }
         if (handshakeFailed) {
-            ((ByteBuf) msg).release();
+            buf.release();
             promise.setFailure(new SSLException("PSK TLS handshake has failed"));
             return;
         }
         if (!handshakeDone) {
             // Buffer plaintext until handshake completes
-            ByteBuf buf = (ByteBuf) msg;
             byte[] data = new byte[buf.readableBytes()];
             buf.readBytes(data);
             buf.release();
             pendingWrites.add(new PendingWrite(data, promise));
             return;
         }
-        encryptAndWrite(ctx, (ByteBuf) msg, promise);
+        encryptAndWrite(ctx, buf, promise);
     }
 
     @Override
-    public void flush(ChannelHandlerContext ctx) throws Exception {
+    public void flush(ChannelHandlerContext ctx) {
         ctx.flush();
     }
 
@@ -364,13 +352,25 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
         }
 
         /**
-         * Returns {@code null} to suppress ALL ClientHello extensions.
-         * TwinCAT's embedded TLS stack closes the connection if it sees extensions it does not
-         * recognize (extended_master_secret, encrypt_then_mac, etc. that BC adds by default).
+         * Returns {@code null} to suppress client-specific ClientHello extensions.
+         * TwinCAT's embedded TLS stack sends {@code handshake_failure} if the ClientHello
+         * contains any extension it does not recognise.
          */
         @Override
         public Hashtable<?, ?> getClientExtensions() {
             return null;
+        }
+
+        /**
+         * Suppresses the {@code extended_master_secret} extension (RFC 7627, type 0x0017).
+         *
+         * BC 1.78+ adds this extension through a separate code path, independent of
+         * {@link #getClientExtensions()} returning {@code null}. TwinCAT sends
+         * {@code handshake_failure(40)} when it sees this extension in the ClientHello.
+         */
+        @Override
+        public boolean shouldUseExtendedMasterSecret() {
+            return false;
         }
 
         @Override
@@ -407,18 +407,13 @@ public class BcPskTlsChannelHandler extends ChannelDuplexHandler {
     }
 
     private static String cipherSuiteName(int suite) {
-        switch (suite) {
-            case CipherSuite.TLS_PSK_WITH_AES_256_CBC_SHA384: return "TLS_PSK_WITH_AES_256_CBC_SHA384";
-            case CipherSuite.TLS_PSK_WITH_AES_128_CBC_SHA256: return "TLS_PSK_WITH_AES_128_CBC_SHA256";
-            case CipherSuite.TLS_PSK_WITH_AES_256_CBC_SHA:    return "TLS_PSK_WITH_AES_256_CBC_SHA";
-            case CipherSuite.TLS_PSK_WITH_AES_128_CBC_SHA:    return "TLS_PSK_WITH_AES_128_CBC_SHA";
-            default: return "0x" + Integer.toHexString(suite).toUpperCase();
-        }
+        return switch (suite) {
+            case CipherSuite.TLS_PSK_WITH_AES_256_CBC_SHA384 -> "TLS_PSK_WITH_AES_256_CBC_SHA384";
+            case CipherSuite.TLS_PSK_WITH_AES_128_CBC_SHA256 -> "TLS_PSK_WITH_AES_128_CBC_SHA256";
+            case CipherSuite.TLS_PSK_WITH_AES_256_CBC_SHA -> "TLS_PSK_WITH_AES_256_CBC_SHA";
+            case CipherSuite.TLS_PSK_WITH_AES_128_CBC_SHA -> "TLS_PSK_WITH_AES_128_CBC_SHA";
+            default -> "0x" + Integer.toHexString(suite).toUpperCase();
+        };
     }
 
-    private static String bytesToHex(byte[] b) {
-        StringBuilder sb = new StringBuilder(b.length * 3);
-        for (byte x : b) sb.append(String.format("%02x ", x));
-        return sb.toString().trim();
-    }
 }

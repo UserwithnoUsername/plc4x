@@ -30,7 +30,6 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Quick hardcoded test against the PLC at 192.168.1.162.
- *
  * Run with:
  *   mvn exec:java -f plc4j/drivers/ads/pom.xml \
  *     -Dexec.mainClass="org.apache.plc4x.protocol.ads.AdsSecureQuickTest" \

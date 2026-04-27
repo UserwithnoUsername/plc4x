@@ -117,13 +117,12 @@ public class TlsAlertBufferingHandler extends ChannelInboundHandlerAdapter {
     // ── Inbound raw-byte interception ─────────────────────────────────────────
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        if (disabled || !(msg instanceof ByteBuf)) {
+    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        if (disabled || !(msg instanceof ByteBuf data)) {
             ctx.fireChannelRead(msg);
             return;
         }
 
-        ByteBuf data = (ByteBuf) msg;
         logger.debug("TlsAlertBufferingHandler: channelRead {} raw byte(s)", data.readableBytes());
         try {
             accumulator.writeBytes(data);
